@@ -1,0 +1,164 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: VPC handson - same construction as terraform version
+
+Parameters:
+  ProjectName:
+    Type: String
+    Default: handson-cfn
+    Description: リソース名のプレフィックス
+
+  VpcCidr:
+    Type: String
+    Default: 10.10.0.0/16
+    Description: VPCのCIDRブロック
+  
+Resources:
+  #VPC
+  MainVPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: !Ref VpcCidr
+      EnableDnsHostnames: true
+      EnableDnsSupport: true
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-vpc"
+  
+  #Internet Gateway
+  MainIGW:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-igw"
+  
+  #IGWをVPCにアタッチ
+  IGWAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref MainVPC
+      InternetGatewayId: !Ref MainIGW
+  
+  #Publicb Subnet AZ-a
+  PublicSubnet1a:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref MainVPC
+      CidrBlock: 10.10.1.0/24
+      AvailabilityZone: ap-northeast-1a
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-public-subnet-1a"
+
+  #Public Subnet AZ-c
+  PublicSubnet1c:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref MainVPC
+      CidrBlock: 10.10.2.0/24
+      AvailabilityZone: ap-northeast-1c
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-public-subnet-1c"
+
+  #Private Subnet AZ-a
+  PrivateSubnet1a:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref MainVPC
+      CidrBlock: 10.10.10.0/24
+      AvailabilityZone: ap-northeast-1a
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-private-subnet-1a"
+
+  #Private Subnet AZ-c
+  PrivateSubnet1c:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref MainVPC
+      CidrBlock: 10.10.20.0/24
+      AvailabilityZone: ap-northeast-1c
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-private-subnet-1c"
+  
+  # Public ルートテーブル
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref MainVPC
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-public-rtb"
+  
+  #Publicルート(IGW向け)
+  PublicRoute:
+    Type: AWS::EC2::Route
+    DependsOn: IGWAttachment
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref MainIGW
+  
+  #Publicルートテーブルとサブネットの関連付け
+  PublicRouteAssoc1a:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      SubnetId: !Ref PublicSubnet1a
+
+  PublicRouteAssoc1c:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      SubnetId: !Ref PublicSubnet1c
+  
+  #Privateルートテーブル
+  PrivateRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref MainVPC
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-private-rtb"
+
+  #Privateルートテーブルとサブネットの関連付け
+  PrivateRouteAssoc1a:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PrivateSubnet1a
+      RouteTableId: !Ref PrivateRouteTable
+
+  PrivateRouteAssoc1c:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PrivateSubnet1c
+      RouteTableId: !Ref PrivateRouteTable
+
+Outputs:
+  VpcId:
+    Description: VPC ID
+    Value: !Ref MainVPC
+    Export:
+      Name: !Sub "${ProjectName}-vpc-id"
+      
+  PublicSubnetIds:
+    Description: Public Subnet IDs
+    Value: !Join [",", [!Ref PublicSubnet1a, !Ref PublicSubnet1c]]
+
+  PrivateSubnetIds:
+    Description: Private Subnet IDs
+    Value: !Join [",", [!Ref PrivateSubnet1a, !Ref PrivateSubnet1c]]
+
+
+
+
+
+  
+
+
