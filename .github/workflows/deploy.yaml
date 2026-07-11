@@ -4,8 +4,8 @@ on:
   push:
     branches: [main]
     paths:
-      - 'month02/docker-ecr/**'
-      - '.github/workflows/deploy.yml'
+      - "month02/docker-ecr/**"
+      - ".github/workflows/deploy.yml"
 
 env:
   AWS_REGION: ap-northeast-1
@@ -20,22 +20,22 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout code 
+      - name: Checkout code
         uses: actions/checkout@v4
-      
+
       - name: Configure AWS vredentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: arn:aws:iam::498184550717:role/github-actions-role
           aws-region: ${{env.AWS_REGION}}
-      
+
       - name: Login to ECR
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
-      
+
       - name: Build and push image
         env:
-          ECR_REGISTORY: ${{steps.login-ecr.outputs.registry}}
+          ECR_REGISTORY: 498184550717.dkr.ecr.ap-northeast-1.amazonaws.com
           IMAGE_TAG: ${{github.sha }}
         working-directory: month02/docker-ecr
         run: |
