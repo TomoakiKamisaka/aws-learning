@@ -1,0 +1,77 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'ALB + Target Group'
+
+Parameters:
+  ProjectName:
+    Type: String
+    Default: tier3
+
+Resources:
+
+  # ターゲットグループ（ALBがリクエストを転送する先）
+  TargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Name: !Sub "${ProjectName}-tg"
+      Port: 80
+      Protocol: HTTP
+      VpcId: !ImportValue
+        Fn::Sub: "${ProjectName}-vpc-id"
+      HealthCheckPath: /
+      HealthCheckIntervalSeconds: 30
+      HealthyThresholdCount: 2
+      UnhealthyThresholdCount: 3
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-tg"
+
+  # ALB本体
+  ApplicationLoadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Name: !Sub "${ProjectName}-alb"
+      Type: application
+      Scheme: internet-facing
+      SecurityGroups:
+        - !ImportValue
+          Fn::Sub: "${ProjectName}-alb-sg-id"
+      Subnets:
+        - !Select
+          - 0
+          - !Split
+            - ","
+            - !ImportValue
+              Fn::Sub: "${ProjectName}-public-subnet-ids"
+        - !Select
+          - 1
+          - !Split
+            - ","
+            - !ImportValue
+              Fn::Sub: "${ProjectName}-public-subnet-ids"
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-alb"
+
+  # リスナー（80番ポートを受け付けてターゲットグループに転送）
+  ALBListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      LoadBalancerArn: !Ref ApplicationLoadBalancer
+      Port: 80
+      Protocol: HTTP
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref TargetGroup
+
+Outputs:
+  ALBDNSName:
+    Description: ALBのDNS名（ブラウザでアクセスするURL）
+    Value: !GetAtt ApplicationLoadBalancer.DNSName
+    Export:
+      Name: !Sub "${ProjectName}-alb-dns"
+
+  TargetGroupArn:
+    Description: ターゲットグループのARN
+    Value: !Ref TargetGroup
+    Export:
+      Name: !Sub "${ProjectName}-tg-arn"

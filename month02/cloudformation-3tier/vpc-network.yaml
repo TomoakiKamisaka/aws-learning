@@ -1,0 +1,217 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: "3層Web構成の土台（VPC + サブネット + SG×3）"
+
+# ========================================
+# Parameters：実行時に変更可能な値
+# Terraformの variables.tf に相当
+# ========================================
+Parameters:
+  ProjectName:
+    Type: String
+    Default: tier3
+    Description: リソース名のプレフィックス
+    AllowedPattern: "^[a-z0-9-]+$"
+
+  VpcCidr:
+    Type: String
+    Default: 10.20.0.0/16
+    Description: VPCのCIDRブロック
+
+# ========================================
+# Resources：実際に作成するリソース
+# Terraformの main.tf に相当
+# ========================================
+Resources:
+  # ---- VPC ----
+  MainVPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: !Ref VpcCidr
+      EnableDnsHostnames: true
+      EnableDnsSupport: true
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-vpc"
+
+  # ---- Internet Gateway ----
+  MainIGW:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-igw"
+
+  # IGW を VPC にアタッチ（CFn では別リソースになる）
+  IGWAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref MainVPC
+      InternetGatewayId: !Ref MainIGW
+
+  # ---- Public Subnet × 2 ----
+  PublicSubnet1a:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref MainVPC
+      CidrBlock: 10.20.1.0/24
+      AvailabilityZone: ap-northeast-1a
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-public-1a"
+
+  PublicSubnet1c:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref MainVPC
+      CidrBlock: 10.20.2.0/24
+      AvailabilityZone: ap-northeast-1c
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-public-1c"
+
+  # ---- Private Subnet × 2（RDS用） ----
+  PrivateSubnet1a:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref MainVPC
+      CidrBlock: 10.20.10.0/24
+      AvailabilityZone: ap-northeast-1a
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-private-1a"
+
+  PrivateSubnet1c:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref MainVPC
+      CidrBlock: 10.20.11.0/24
+      AvailabilityZone: ap-northeast-1c
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-private-1c"
+
+  # ---- Public ルートテーブル ----
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref MainVPC
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-public-rtb"
+
+  # IGW向けのルート（CFn では Route を別リソースで定義）
+  PublicRoute:
+    Type: AWS::EC2::Route
+    DependsOn: IGWAttachment
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref MainIGW
+
+  # ルートテーブルとサブネットの関連付け
+  PublicRouteAssoc1a:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnet1a
+      RouteTableId: !Ref PublicRouteTable
+
+  PublicRouteAssoc1c:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnet1c
+      RouteTableId: !Ref PublicRouteTable
+
+  # ========================================
+  # Security Groups（3層のチェーン構造）
+  # ========================================
+
+  # ---- ALB 用 SG ----
+  ALBSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: !Sub "${ProjectName}-alb-sg"
+      GroupDescription: "ALB: allow HTTP from internet"
+      VpcId: !Ref MainVPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-alb-sg"
+
+  # ---- EC2 用 SG（ALB SG からの HTTP のみ許可） ----
+  EC2SecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: !Sub "${ProjectName}-ec2-sg"
+      GroupDescription: "EC2: allow HTTP from ALB only"
+      VpcId: !Ref MainVPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          SourceSecurityGroupId: !Ref ALBSecurityGroup
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-ec2-sg"
+
+  # ---- RDS 用 SG（EC2 SG からの MySQL のみ許可） ----
+  RDSSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: !Sub "${ProjectName}-rds-sg"
+      GroupDescription: "RDS: allow MySQL from EC2 only"
+      VpcId: !Ref MainVPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 3306
+          ToPort: 3306
+          SourceSecurityGroupId: !Ref EC2SecurityGroup
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-rds-sg"
+
+# ========================================
+# Outputs：他のスタックや確認用に出力
+# Terraformの outputs.tf に相当
+# ========================================
+Outputs:
+  VpcId:
+    Description: VPC ID
+    Value: !Ref MainVPC
+    Export:
+      Name: !Sub "${ProjectName}-vpc-id"
+
+  PublicSubnetIds:
+    Description: Public Subnet IDs
+    Value: !Join [",", [!Ref PublicSubnet1a, !Ref PublicSubnet1c]]
+    Export:
+      Name: !Sub "${ProjectName}-public-subnet-ids"
+
+  PrivateSubnetIds:
+    Description: Private Subnet IDs
+    Value: !Join [",", [!Ref PrivateSubnet1a, !Ref PrivateSubnet1c]]
+    Export:
+      Name: !Sub "${ProjectName}-private-subnet-ids"
+
+  ALBSecurityGroupId:
+    Description: ALB Security Group ID
+    Value: !Ref ALBSecurityGroup
+    Export:
+      Name: !Sub "${ProjectName}-alb-sg-id"
+
+  EC2SecurityGroupId:
+    Description: EC2 Security Group ID
+    Value: !Ref EC2SecurityGroup
+    Export:
+      Name: !Sub "${ProjectName}-ec2-sg-id"
+
+  RDSSecurityGroupId:
+    Description: RDS Security Group ID
+    Value: !Ref RDSSecurityGroup
+    Export:
+      Name: !Sub "${ProjectName}-rds-sg-id"

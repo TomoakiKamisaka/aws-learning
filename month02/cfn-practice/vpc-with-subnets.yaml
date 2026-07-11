@@ -1,0 +1,87 @@
+AWSTemplateFormatVersion: '2010-09-09'
+
+Parameters:
+  ProjectName:
+    Type: String
+    Default: practice
+    Description: リソース名のプレフィックス
+
+  VpcCidr:
+    Type: String
+    Default: 10.30.0.0/16
+    Description: VPCのCIDRブロック
+
+  AZ:
+    Type: String
+    Default: ap-northeast-1a
+    Description: AZ
+
+Resources:
+  MainVPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: !Ref VpcCidr
+      EnableDnsHostnames: true
+      EnableDnsSupport: true
+      Tags:
+        - Key: "Name"
+          Value: !Sub "${ProjectName}-vpc"
+  
+  IGW:
+    Type: AWS::EC2::InternetGateway
+    Properties: 
+      Tags:
+        - Key: "Name"
+          Value: !Sub "${ProjectName}-igw"
+  
+  IGWAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref MainVPC
+      InternetGatewayId: !Ref IGW
+  
+  PublicSubnet:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref MainVPC
+      CidrBlock: "10.30.1.0/24"
+      AvailabilityZone: !Ref AZ
+      Tags:
+        - Key: "Name"
+          Value: !Sub "${ProjectName}-1a"
+
+  
+  PublicRTB:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref MainVPC
+      Tags:
+        - Key: "Name"
+          Value: !Sub "${ProjectName}-public-rtb" 
+
+  PublicRoute:
+    Type: AWS::EC2::Route
+    DependsOn: IGWAttachment
+    Properties:
+      RouteTableId: !Ref PublicRTB
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref IGW
+  
+  PublicRTBAttachment:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PublicRTB
+      SubnetId: !Ref PublicSubnet
+      
+Outputs:
+  VpcId:
+    Description: VPC ID
+    Value: !Ref MainVPC
+    Export:
+      Name: !Sub "${ProjectName}-vpc-id"
+  
+  PublicSubnetId:
+    Description: Public Subnet ID
+    Value: !Ref PublicSubnet
+    Export:
+      Name: !Sub "${ProjectName}-public-subnet-id"

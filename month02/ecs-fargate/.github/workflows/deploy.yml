@@ -1,0 +1,43 @@
+name: Build and Deploy to ECS
+
+on:
+  push:
+    branches: [main]
+
+env:
+  AWS_REGION: ap-northeast-1
+  ECR_REPOSITORY: my-app
+  ECS_CLUSTER: ecs-handson-cluster
+  ECS_SERVICE: ecs-handson-service
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      # ①コードを取得
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      # ②AWSの認証
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::498184550717:role/github-actions-role
+          aws-region: ${{env.AWS_REGION}}
+      #③ECRへのログイン
+      - name: Login to ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      #④Dockerビルド&ECRへpush
+      - name: build and push image
+        env:
+          ECR_REGISTRY: ${{steps.login-ecr.outputs.registry}}
+          IMAGE_TAG: ${{github.sha}}
+
+        run: |
+          aws ecs update-service ¥
+            --cluster $ECS_CLUSTER ¥
+            --service $ECS_SERVICE ¥
+            --force-new-deployment
